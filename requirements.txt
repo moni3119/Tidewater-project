@@ -4,3 +4,4 @@ psycopg[binary,pool]
 redis
 pydantic-settings
 httpx
+pytest

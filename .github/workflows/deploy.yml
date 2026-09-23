@@ -1,0 +1,364 @@
+name: Tidewater CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - task-c-fixes
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: settle-api
+  NAMESPACE: tidewater
+
+jobs:
+  # ==================================================
+  # 1. TEST
+  # ==================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build test image
+        run: |
+          docker build \
+            -t settle-api:test \
+            -f app/Dockerfile .
+
+      - name: Run tests
+        run: |
+          docker run --rm settle-api:test pytest -q
+
+  # ==================================================
+  # 2. BUILD ONCE
+  # ==================================================
+  build:
+    name: Build immutable artifact
+    needs: test
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build immutable image
+        id: build
+        run: |
+          IMAGE_TAG="${GITHUB_SHA}"
+
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+          docker build \
+            -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+            -f app/Dockerfile .
+
+      - name: Save image artifact
+        run: |
+          docker save \
+            "${IMAGE_NAME}:${GITHUB_SHA}" \
+            -o settle-api.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: settle-api-image
+          path: settle-api.tar
+          retention-days: 1
+
+  # ==================================================
+  # 3. SECURITY SCAN
+  # ==================================================
+  scan:
+    name: Scan immutable artifact
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: settle-api-image
+
+      - name: Load image
+        run: |
+          docker load -i settle-api.tar
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+  # ==================================================
+  # 4. DEPLOY
+  # ==================================================
+  deploy:
+    name: Deploy, verify and rollback
+    needs:
+      - test
+      - build
+      - scan
+
+    runs-on: ubuntu-latest
+
+    steps:
+      # ----------------------------------------------
+      # Checkout
+      # ----------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------
+      # Install kubectl
+      # ----------------------------------------------
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      # ----------------------------------------------
+      # Install k3d
+      # ----------------------------------------------
+      - name: Install k3d
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+      # ----------------------------------------------
+      # Create local Kubernetes cluster
+      # ----------------------------------------------
+      - name: Create Kubernetes cluster
+        run: |
+          k3d cluster create tidewater \
+            --wait \
+            -p "8080:80@loadbalancer"
+
+      # ----------------------------------------------
+      # Create namespace
+      # ----------------------------------------------
+      - name: Create namespace
+        run: |
+          kubectl apply -f deploy/k8s/namespace.yaml
+
+      # ----------------------------------------------
+      # Create database secret
+      # ----------------------------------------------
+      - name: Create database secret
+        run: |
+          kubectl -n "${NAMESPACE}" create secret generic tidewater-db-secret \
+            --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.TIDEWATER_DB_PASSWORD }}
+
+      # ----------------------------------------------
+      # Save currently running image BEFORE deployment
+      # ----------------------------------------------
+      - name: Save previous image
+        id: previous
+        shell: bash
+        run: |
+          PREVIOUS_IMAGE="$(kubectl -n "${NAMESPACE}" \
+            get deployment settle-api \
+            -o jsonpath='{.spec.template.spec.containers[0].image}' \
+            2>/dev/null || true)"
+
+          echo "previous_image=${PREVIOUS_IMAGE}" >> "$GITHUB_OUTPUT"
+
+          echo "Previous image:"
+          echo "${PREVIOUS_IMAGE}"
+
+      # ----------------------------------------------
+      # Deploy PostgreSQL
+      # ----------------------------------------------
+      - name: Deploy PostgreSQL
+        run: |
+          kubectl apply -f deploy/k8s/postgres.yaml
+
+      # ----------------------------------------------
+      # Deploy PostgreSQL initialization
+      # ----------------------------------------------
+      - name: Deploy PostgreSQL initialization
+        run: |
+          kubectl apply -f deploy/k8s/postgres-init.yaml
+
+      # ----------------------------------------------
+      # Deploy Redis
+      # ----------------------------------------------
+      - name: Deploy Redis
+        run: |
+          kubectl apply -f deploy/k8s/redis.yaml
+
+      # ----------------------------------------------
+      # Deploy Mock Bank
+      # ----------------------------------------------
+      - name: Deploy Mock Bank
+        run: |
+          kubectl apply -f deploy/k8s/mock-bank.yaml
+
+      # ----------------------------------------------
+      # Download immutable image
+      # ----------------------------------------------
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: settle-api-image
+
+      # ----------------------------------------------
+      # Load immutable image
+      # ----------------------------------------------
+      - name: Load immutable image
+        run: |
+          docker load -i settle-api.tar
+
+      # ----------------------------------------------
+      # Import same image into k3d
+      # ----------------------------------------------
+      - name: Import immutable image into k3d
+        run: |
+          k3d image import \
+            "${IMAGE_NAME}:${GITHUB_SHA}" \
+            -c tidewater
+
+      # ----------------------------------------------
+      # Deploy API service
+      # ----------------------------------------------
+      - name: Deploy API service
+        run: |
+          kubectl apply -f deploy/k8s/api-service.yaml
+
+      # ----------------------------------------------
+      # Deploy API
+      # ----------------------------------------------
+      - name: Deploy API
+        run: |
+          kubectl apply -f deploy/k8s/api-deployment.yaml
+
+      # ----------------------------------------------
+      # Deploy Worker
+      # ----------------------------------------------
+      - name: Deploy Worker
+        run: |
+          kubectl apply -f deploy/k8s/worker-deployment.yaml
+
+      # ----------------------------------------------
+      # Deploy HPA
+      # ----------------------------------------------
+      - name: Deploy HPA
+        run: |
+          kubectl apply -f deploy/k8s/hpa.yaml
+
+      # ----------------------------------------------
+      # Set immutable release image
+      # ----------------------------------------------
+      - name: Set release image
+        run: |
+          kubectl -n "${NAMESPACE}" set image \
+            deployment/settle-api \
+            settle-api="${IMAGE_NAME}:${GITHUB_SHA}"
+
+          kubectl -n "${NAMESPACE}" rollout status \
+            deployment/settle-api \
+            --timeout=120s
+
+      # ----------------------------------------------
+      # Health verification
+      # ----------------------------------------------
+      - name: Verify health
+        run: |
+          kubectl -n "${NAMESPACE}" run tidewater-health \
+            --rm \
+            --restart=Never \
+            --image=curlimages/curl:8.10.1 \
+            -- \
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              http://settle-api:8000/healthz
+
+      # ----------------------------------------------
+      # Readiness verification
+      # ----------------------------------------------
+      - name: Verify readiness
+        run: |
+          kubectl -n "${NAMESPACE}" run tidewater-ready \
+            --rm \
+            --restart=Never \
+            --image=curlimages/curl:8.10.1 \
+            -- \
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              http://settle-api:8000/readyz
+
+      # ----------------------------------------------
+      # Automatic rollback
+      # ----------------------------------------------
+      - name: Automatic rollback
+        if: failure()
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "POST-DEPLOYMENT VERIFICATION FAILED"
+          echo "STARTING AUTOMATIC ROLLBACK"
+          echo "======================================"
+
+          PREVIOUS_IMAGE="${{ steps.previous.outputs.previous_image }}"
+
+          if [ -n "${PREVIOUS_IMAGE}" ]; then
+
+            echo "Rolling back to:"
+            echo "${PREVIOUS_IMAGE}"
+
+            kubectl -n "${NAMESPACE}" set image \
+              deployment/settle-api \
+              settle-api="${PREVIOUS_IMAGE}"
+
+            kubectl -n "${NAMESPACE}" rollout status \
+              deployment/settle-api \
+              --timeout=120s
+
+            echo "Automatic rollback completed."
+
+          else
+
+            echo "No previous image was available."
+            echo "Using Kubernetes rollout undo."
+
+            kubectl -n "${NAMESPACE}" rollout undo \
+              deployment/settle-api
+
+            kubectl -n "${NAMESPACE}" rollout status \
+              deployment/settle-api \
+              --timeout=120s
+
+          fi
+
+      # ----------------------------------------------
+      # Final status
+      # ----------------------------------------------
+      - name: Final deployment status
+        if: always()
+        run: |
+          echo "Pods:"
+          kubectl -n "${NAMESPACE}" get pods -o wide
+
+          echo ""
+          echo "Deployment:"
+          kubectl -n "${NAMESPACE}" get deployment settle-api
+
+          echo ""
+          echo "Services:"
+          kubectl -n "${NAMESPACE}" get services
