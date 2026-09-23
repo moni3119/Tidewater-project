@@ -1,0 +1,5 @@
+﻿ current_connections 
+---------------------
+                   3
+(1 row)
+

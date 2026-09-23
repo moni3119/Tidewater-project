@@ -1,0 +1,8 @@
+﻿HTTP/1.1 409 Conflict
+Server: nginx/1.27.5
+Date: Wed, 23 Sep 2026 15:34:58 GMT
+Content-Type: application/json
+Content-Length: 65
+Connection: keep-alive
+
+{"detail":"Idempotency key was already used with different data"}

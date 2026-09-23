@@ -23,3 +23,4 @@ crash.*.log
 # OS
 .DS_Store
 Thumbs.db
+deploy/k8s/secret.local.yaml

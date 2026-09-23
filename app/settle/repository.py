@@ -26,6 +26,7 @@ def create_settlement(
                         status
                     )
                     VALUES (%s, %s, %s, %s, %s, 'PENDING')
+                    ON CONFLICT (idempotency_key) DO NOTHING
                     RETURNING *
                     """,
                     (
@@ -38,6 +39,29 @@ def create_settlement(
                 )
 
                 settlement = cur.fetchone()
+
+                if settlement is None:
+                    cur.execute(
+                        """
+                        SELECT *
+                        FROM settlements
+                        WHERE idempotency_key = %s
+                        """,
+                        (idempotency_key,),
+                    )
+
+                    settlement = cur.fetchone()
+
+                    if (
+                        settlement["merchant_id"] != merchant_id
+                        or settlement["amount_minor"] != amount_minor
+                        or settlement["currency"] != currency
+                    ):
+                        raise ValueError(
+                            "Idempotency key was already used with different data"
+                        )
+
+                    return settlement
 
                 cur.execute(
                     """

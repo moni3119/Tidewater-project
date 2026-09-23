@@ -25,7 +25,10 @@ spec:
             - name: POSTGRES_USER
               value: settle
             - name: POSTGRES_PASSWORD
-              value: settle_dev_password
+              valueFrom:
+                secretKeyRef:
+                  name: tidewater-db-secret
+                  key: POSTGRES_PASSWORD
 
           resources:
             requests:

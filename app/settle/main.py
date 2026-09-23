@@ -2,6 +2,7 @@ from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Header, HTTPException, status
 
+from .db import check_database
 from .repository import (
     create_settlement,
     get_settlement,
@@ -15,7 +16,23 @@ app = FastAPI(title="Tidewater Settlement API")
 
 @app.get("/healthz")
 def healthz():
+    # Liveness only checks whether the API process is alive.
+    # It does not depend on PostgreSQL.
     return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz():
+    # Readiness checks PostgreSQL availability.
+    # A database problem removes the pod from traffic
+    # instead of causing a container restart.
+    if not check_database():
+        raise HTTPException(
+            status_code=503,
+            detail="database unavailable",
+        )
+
+    return {"status": "ready"}
 
 
 @app.get("/")

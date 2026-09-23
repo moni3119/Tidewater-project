@@ -15,14 +15,20 @@ spec:
     spec:
       containers:
         - name: settle-api
-          image: settle-api:1.8.0
+          image: settle-api:1.9.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
 
           env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tidewater-db-secret
+                  key: POSTGRES_PASSWORD
+
             - name: DATABASE_URL
-              value: "postgresql://settle:settle_dev_password@postgres:5432/settle"
+              value: "postgresql://settle:$(POSTGRES_PASSWORD)@postgres:5432/settle"
 
           resources:
             requests:
@@ -36,16 +42,16 @@ spec:
             httpGet:
               path: /healthz
               port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 1
-            failureThreshold: 1
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
 
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 1
-            failureThreshold: 1
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

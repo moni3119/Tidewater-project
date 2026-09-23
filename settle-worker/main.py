@@ -27,7 +27,8 @@ CONSUMER_NAME = os.getenv("CONSUMER_NAME", "worker-1")
 
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 2
-
+PENDING_CLAIM_IDLE_MS = 30000
+CLAIM_COUNT = 10
 
 def get_db_connection():
     return psycopg.connect(DATABASE_URL)
@@ -87,6 +88,31 @@ def publish_outbox_events(r):
                 )
 
         conn.commit()
+
+def recover_pending_messages(r):
+    try:
+        result = r.xautoclaim(
+            STREAM_NAME,
+            GROUP_NAME,
+            CONSUMER_NAME,
+            min_idle_time=PENDING_CLAIM_IDLE_MS,
+            start_id="0-0",
+            count=CLAIM_COUNT,
+        )
+
+        messages = result[1]
+
+        for message_id, fields in messages:
+            print(f"Recovered pending message: {message_id}")
+
+            process_message(
+                r,
+                message_id,
+                fields,
+            )
+
+    except redis.exceptions.ResponseError as exc:
+        print(f"Pending message recovery error: {exc}")
 
 
 def process_message(r, message_id, fields):
@@ -187,6 +213,8 @@ def main():
     while True:
         try:
             publish_outbox_events(r)
+
+            recover_pending_messages(r)
 
             messages = r.xreadgroup(
                 GROUP_NAME,
