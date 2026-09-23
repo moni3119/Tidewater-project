@@ -1,5 +1,9 @@
 # Project Tidewater - Incident RCA
 
+**Original Incident Date:** 14 August 2026  
+**Local Reproduction Date:** 23 September 2026  
+**RCA Prepared:** 23 September 2026
+
 ## 1. Incident Summary
 
 Date of local reproduction: 23 September 2026
@@ -327,34 +331,56 @@ PostgreSQL was verified with:
 
 `max_connections = 100`
 
-The API currently creates a database connection for a database-backed
-request.
+The inherited Kubernetes HPA is configured with:
 
-The Kubernetes HPA is configured with:
-
-- minimum replicas: 2
-- maximum replicas: 10
+- Minimum API replicas: 2
+- Maximum API replicas: 10
+- CPU target: 50%
 
 The production scenario describes 4 Uvicorn workers per API pod.
 
-Therefore the theoretical application-side connection demand can become
-significant as replicas and workers increase.
+Therefore, at the HPA maximum:
 
-The final production design must use bounded connection pooling and
-calculate the maximum database connection budget before allowing HPA
-scaling.
+- 10 API pods × 4 Uvicorn workers = 40 application workers
 
-A safe design must reserve connections for:
+The current application opens a PostgreSQL connection for each
+database-backed operation rather than using an explicitly bounded
+application connection pool.
 
-- API traffic
-- workers
-- migrations/admin operations
-- monitoring/maintenance
-- PostgreSQL internal requirements
+A theoretical upper-bound estimate of 40 concurrent database connections
+from API workers alone is therefore possible, before accounting for:
 
-The corrected configuration will document the connection budget explicitly.
+- settle-worker processes
+- migrations
+- monitoring and administration
+- PostgreSQL internal/reserved usage
+- other database clients
 
----
+With PostgreSQL limited to 100 connections, the remaining connection
+capacity cannot safely be treated as available entirely to API traffic.
+
+The corrected design will use bounded connection pooling and an explicit
+connection budget.
+
+The production connection budget must reserve capacity for API pods,
+workers, migrations/administration and monitoring. HPA scaling must be
+limited so that the calculated maximum connection usage remains below the
+PostgreSQL connection limit.
+
+### Capacity conclusion
+
+The incident investigation identified PostgreSQL connection capacity as a
+design constraint rather than claiming that connection exhaustion was
+independently proven during the local reproduction.
+
+The 1.9.x implementation will therefore:
+
+1. Use bounded database connection pooling.
+2. Define a maximum connection budget per API pod.
+3. Account for worker database connections.
+4. Reserve connections for administrative and monitoring operations.
+5. Validate the connection budget against PostgreSQL `max_connections=100`
+   before increasing HPA capacity.
 
 ## 11. Evidence Index
 
