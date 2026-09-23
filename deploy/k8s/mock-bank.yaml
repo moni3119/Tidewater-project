@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-bank
+  namespace: tidewater
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-bank
+  template:
+    metadata:
+      labels:
+        app: mock-bank
+    spec:
+      containers:
+        - name: mock-bank
+          image: mock-bank:1.8.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://settle:settle_dev_password@postgres:5432/settle"
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-bank
+  namespace: tidewater
+spec:
+  selector:
+    app: mock-bank
+  ports:
+    - port: 8001
+      targetPort: 8001
+  type: ClusterIP

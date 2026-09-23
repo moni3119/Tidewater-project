@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: settle-worker
+  namespace: tidewater
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: settle-worker
+  template:
+    metadata:
+      labels:
+        app: settle-worker
+    spec:
+      containers:
+        - name: settle-worker
+          image: settle-worker:1.8.0
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://settle:settle_dev_password@postgres:5432/settle"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: BANK_URL
+              value: "http://mock-bank:8001"
+            - name: CONSUMER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
