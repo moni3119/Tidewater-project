@@ -1,0 +1,3 @@
+FROM settle-api:1.9.0
+
+CMD ["sh", "-c", "echo 'INTENTIONAL 1.9.1-rc FAULT'; exit 1"]
