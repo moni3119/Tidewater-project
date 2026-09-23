@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json
+
+services:
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: settle
+      POSTGRES_USER: settle
+      POSTGRES_PASSWORD: settle_dev_password
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+
+  redis:
+    image: redis:7
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  mock-bank:
+    build:
+      context: .
+      dockerfile: mock-bank/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://settle:settle_dev_password@postgres:5432/settle
+    ports:
+      - "127.0.0.1:8001:8001"
+    depends_on:
+      - postgres
+
+  settle-api:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://settle:settle_dev_password@postgres:5432/settle
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    
+  settle-worker:
+    build:
+      context: .
+      dockerfile: settle-worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://settle:settle_dev_password@postgres:5432/settle
+      REDIS_URL: redis://redis:6379/0
+      BANK_URL: http://mock-bank:8001
+      CONSUMER_NAME: worker-1
+    depends_on:
+      - postgres
+      - redis
+      - mock-bank
+
+volumes:
+  postgres_data:

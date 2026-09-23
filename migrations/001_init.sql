@@ -1,0 +1,26 @@
+CREATE TABLE IF NOT EXISTS settlements (
+    id UUID PRIMARY KEY,
+    merchant_id TEXT NOT NULL,
+    amount_minor BIGINT NOT NULL CHECK (amount_minor > 0),
+    currency CHAR(3) NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id BIGSERIAL PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    aggregate_id UUID NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    published_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_settlements_created_at
+    ON settlements(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_unpublished
+    ON outbox_events(published_at)
+    WHERE published_at IS NULL;
