@@ -3,7 +3,24 @@
 The following items were deliberately left out of the implementation
 or kept at design/proof level.
 
-## 1. Real AWS deployment
+## 1. Historical 14 Aug alert-timing analysis
+
+Priority: High
+
+The original `incident-2026-08-14` evidence bundle was not available
+in the working repository or local project.
+
+Therefore, the historical calculation of:
+- which Task E alerts would have fired on 14 Aug
+- how many minutes earlier they would have fired than the actual detection
+
+could not be independently verified.
+
+No historical alert timing or evidence numbers have been invented.
+
+---
+
+## 2. Real AWS deployment
 
 Priority: High
 
@@ -17,31 +34,15 @@ applied to a real AWS account.
 
 ---
 
-## 2. Full production observability stack
-
-Priority: High
-
-A complete Prometheus and Grafana production monitoring deployment
-was not completed as part of the current implementation.
-
-The deployment rollback demonstration instead uses Kubernetes rollout
-verification and an explicit deployment-failure alert signal.
-
-A production implementation should provide persistent metrics,
-dashboards and alert routing.
-
----
-
 ## 3. Production alert notification integration
 
 Priority: Medium
 
-The local demonstration shows the deployment verification alert
-firing in the deployment workflow.
+Prometheus alerts are implemented locally, but they are not connected
+to a production incident notification system.
 
-A production environment should connect the alert to an incident
-notification system such as Slack, PagerDuty or an equivalent
-on-call platform.
+A production environment should connect alerts to Slack, PagerDuty or
+an equivalent on-call platform.
 
 ---
 
@@ -85,16 +86,19 @@ Priority: High
 
 The local implementation uses a Kubernetes Secret for the demonstration.
 
-A production AWS implementation should use a managed secret system
-such as AWS Secrets Manager and workload identity/IAM-based access.
+A production AWS implementation should use AWS Secrets Manager and
+workload identity/IAM-based access.
 
 ---
 
-## 8. Further application observability
+## 8. Full production tracing
 
 Priority: Medium
 
-Structured JSON logging, distributed tracing and full API/worker
-correlation were not completed to production depth.
+Structured JSON logging and API-to-worker correlation IDs were
+implemented and verified locally.
 
-These should be added before a real production rollout.
+Full distributed tracing with OpenTelemetry or an equivalent tracing
+platform was not implemented.
+
+This should be considered before a production rollout.

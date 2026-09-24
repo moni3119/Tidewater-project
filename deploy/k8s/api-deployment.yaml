@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: settle-api
-          image: settle-api:1.9.0
+          image: settle-api:task-e
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

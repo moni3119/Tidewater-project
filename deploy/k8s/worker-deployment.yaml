@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: settle-worker
-          image: settle-worker:1.9.0
+          image: settle-worker:task-e
           imagePullPolicy: IfNotPresent
 
           env:

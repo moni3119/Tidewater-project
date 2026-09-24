@@ -11,6 +11,7 @@ def create_settlement(
     amount_minor: int,
     currency: str,
     idempotency_key: str,
+    correlation_id: str | None = None,
 ):
     with get_connection() as conn:
         with conn.transaction():
@@ -84,6 +85,7 @@ def create_settlement(
                                 "merchant_id": merchant_id,
                                 "amount_minor": amount_minor,
                                 "currency": currency,
+                                "correlation_id": correlation_id,
                             }
                         ),
                     ),
