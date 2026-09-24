@@ -16,6 +16,8 @@ venv/
 *.tfstate.*
 crash.log
 crash.*.log
+# Terraform variable files may contain environment-specific values
+infra/terraform/environments/*/terraform.tfvars
 
 # IDE
 .vscode/

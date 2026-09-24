@@ -1,0 +1,6 @@
+aws_region     = "ap-south-1"
+environment    = "prod"
+aws_account_id = "849381699036"
+
+db_username = "settle_admin"
+db_password = "CHANGE_ME"

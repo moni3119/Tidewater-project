@@ -1,0 +1,29 @@
+variable "aws_region" {
+  description = "AWS region."
+  type        = string
+  default     = "ap-south-1"
+}
+
+variable "environment" {
+  description = "Environment name."
+  type        = string
+  default     = "prod"
+}
+
+variable "aws_account_id" {
+  description = "AWS account ID."
+  type        = string
+  default     = "849381699036"
+}
+
+variable "db_username" {
+  description = "Database username."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_password" {
+  description = "Database password."
+  type        = string
+  sensitive   = true
+}
